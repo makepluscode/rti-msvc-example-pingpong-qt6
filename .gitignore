@@ -1,0 +1,28 @@
+# Build directories
+build/
+bin/
+obj/
+
+# IDL Generated files
+gen/
+
+# MSVC
+.vs/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.filters
+
+# AI Assistant
+.cursor/
+.gemini/
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# Executables
+*.exe
+*.pdb
+*.ilk

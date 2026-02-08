@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<dds xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="C:/Program Files/rti_connext_dds-7.5.0/resource/schema/rti_dds_qos_profiles.xsd">
+    <!-- 
+      QoS 라이브러리 정의 
+      DDS 애플리케이션은 이 프로파일을 로드하여 통신 설정을 결정합니다.
+    -->
+    <qos_library name="PingPong_Library">
+        <qos_profile name="PingPong_Profile" is_default_qos="true">
+            <participant_qos>
+                <participant_name>
+                    <name>RTI Ping-Pong Participant</name>
+                </participant_name>
+            </participant_qos>
+            
+            <datareader_qos>
+                <!-- 신뢰성 있는 통신 설정 (메시지 유실 시 재전송) -->
+                <reliability>
+                    <kind>RELIABLE_RELIABILITY_QOS</kind>
+                </reliability>
+                <!-- 최신 1개 메시지만 큐에 보관 -->
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>1</depth>
+                </history>
+            </datareader_qos>
+
+            <datawriter_qos>
+                <reliability>
+                    <kind>RELIABLE_RELIABILITY_QOS</kind>
+                </reliability>
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>1</depth>
+                </history>
+            </datawriter_qos>
+        </qos_profile>
+    </qos_library>
+</dds>

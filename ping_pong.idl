@@ -1,0 +1,10 @@
+/*
+ * Ping-Pong 메시지 타입 정의 (DDS IDL)
+ *
+ * 두 토픽 "Ping"과 "Pong"에서 동일한 구조체를 사용합니다.
+ * app1은 Ping 토픽에 쓰고 Pong 토픽을 읽고, app2는 그 반대입니다.
+ */
+struct PingPongMessage {
+    string sender_id;    // 발신자 식별자 ("app1" 또는 "app2")
+    long sequence_num;  // 메시지 순서 번호 (ping-pong 횟수)
+};
