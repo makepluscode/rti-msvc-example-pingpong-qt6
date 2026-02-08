@@ -1,102 +1,143 @@
-# Architecture: RTI Ping-Pong Example
+# Architecture: RTI Ping-Pong with Qt6 QML
 
-이 문서는 RTI Connext DDS를 사용한 Ping-Pong 예제의 전반적인 구조와 동작 원리를 설명합니다.
+이 문서는 RTI Connext DDS와 Qt6 QML을 사용한 Ping-Pong 예제의 아키텍처를 설명합니다.
 
 ## 1. 시스템 개요
 
-본 프로젝트는 두 개의 독립적인 분산 애플리케이션(`app1`, `app2`)이 DDS(Data Distribution Service) 버스를 통해 데이터를 주고받는 구조를 보여줍니다.
+본 프로젝트는 **Daemon**(터미널)과 **Qt GUI**(QML)가 DDS를 통해 통신하는 구조입니다.
 
 ```mermaid
 graph LR
-    subgraph "app1 (Requester)"
-        A1[DomainParticipant]
-        W1[Ping DataWriter]
-        R1[Pong DataReader]
+    subgraph "PingDaemon (터미널)"
+        D1[DomainParticipant]
+        DW[Ping DataWriter]
+        DR[Pong DataReader]
     end
 
     subgraph "DDS Infrastructure"
-        T1((DDS Bus: Ping))
-        T2((DDS Bus: Pong))
+        T1((Topic: Ping))
+        T2((Topic: Pong))
     end
 
-    subgraph "app2 (Responder)"
-        A2[DomainParticipant]
-        R2[Ping DataReader]
-        W2[Pong DataWriter]
+    subgraph "PingGui (Qt6 QML)"
+        G1[DomainParticipant]
+        GR[Ping DataReader]
+        GW[Pong DataWriter]
+        QML[QML UI]
     end
 
-    W1 -- "Topic: Ping" --> T1
-    T1 -- "Topic: Ping" --> R2
+    DW -- "publish" --> T1
+    T1 -- "subscribe" --> GR
+    GR -- "signal" --> QML
     
-    W2 -- "Topic: Pong" --> T2
-    T2 -- "Topic: Pong" --> R1
+    GW -- "publish" --> T2
+    T2 -- "subscribe" --> DR
 ```
 
 ---
 
-## 2. DDS 엔티티 계층 구조
+## 2. 컴포넌트 설명
 
-각 애플리케이션은 DDS 표준에 따라 다음과 같은 객체 계층을 가집니다.
+### 2.1 PingDaemon
 
-*   **DomainParticipant**: DDS 네트워크에 참여하는 기본 단위 (Domain ID 0 사용).
-*   **Topic**: 통신할 데이터의 이름과 데이터 타입을 정의 ("Ping", "Pong").
-*   **Publisher/Subscriber**: 데이터 전송 및 수신의 그룹화 관리.
-*   **DataWriter/DataReader**: 실제 데이터를 네트워크에 쓰고 읽는 통로.
+터미널에서 실행되는 백그라운드 프로세스입니다.
+
+| 역할 | 설명 |
+|------|------|
+| Ping 발행 | 1초 간격으로 Ping 토픽에 메시지 전송 |
+| Pong 수신 | `PongListener::on_data_available()` 콜백으로 응답 수신 |
+| 로그 출력 | 터미널에 송수신 상태 출력 |
+
+### 2.2 PingGui (Qt6 QML)
+
+Qt Quick을 사용한 GUI 애플리케이션입니다.
+
+| 컴포넌트 | 설명 |
+|----------|------|
+| `DdsManager` | DDS 엔티티 관리 및 Qt 시그널 연결 |
+| `PingListener` | DDS 콜백을 Qt 스레드로 전달 |
+| `Main.qml` | 카드 기반 UI (상태, 메시지 목록) |
 
 ---
 
-## 3. 시퀀스 다이어그램 (Sequence Diagram)
-
-애플리케이션 간의 상호작용 흐름입니다.
+## 3. DDS 콜백 구조
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    participant A1 as app1 (Ping 발신자)
-    participant Bus as DDS Network (Bus)
-    participant A2 as app2 (Ping 수신자)
+    participant DDS as DDS Thread
+    participant Listener as PingListener
+    participant Manager as DdsManager
+    participant QML as QML UI
 
-    Note over A1, A2: Discovery: 같은 도메인 내의 참여자 및 토픽 매칭
+    DDS->>Listener: on_data_available()
+    Listener->>Manager: QMetaObject::invokeMethod
+    Note over Listener,Manager: Qt::QueuedConnection (스레드 안전)
+    Manager->>QML: emit messagesChanged()
+    QML->>QML: ListView 업데이트
 
-    loop Ping-Pong 통신 사이클
-        A1->>Bus: Ping 전송 (sequence_num: N)
-        Bus->>A2: 데이터 전달
-        Note right of A2: DataReaderListener::on_data_available() 트리거
-        Note right of A2: Ping 수신 처리 및 로그 출력
-        
-        A2->>Bus: Pong 응답 (sequence_num: N)
-        Bus->>A1: 데이터 전달
-        Note left of A1: DataReaderListener::on_data_available() 트리거
-        Note left of A1: Pong 수신 확인 및 로그 출력
-        
-        A1->>A1: 1초 대기 후 다음 시퀀스 시작
-    end
+    DDS->>Listener: on_subscription_matched()
+    Listener->>Manager: updateConnectionStatus()
+    Manager->>QML: emit statusChanged()
+    QML->>QML: 상태 표시 업데이트
 ```
 
 ---
 
-## 4. 데이터 모델 (IDL)
+## 4. 연결 상태 감지
 
-`ping_pong.idl`에 정의된 데이터 구조입니다.
+`on_subscription_matched` 콜백을 통해 상대 DataWriter의 연결/해제를 감지합니다.
 
-| 필드명 | 타입 | 설명 |
-| :--- | :--- | :--- |
-| `sender_id` | `string` | 메시지를 보내는 쪽의 아이디 ("app1" 또는 "app2") |
-| `sequence_num` | `long` | 메시지의 순서 번호 (Ping과 Pong 매칭용) |
-
----
-
-## 5. QoS (Quality of Service) 설정
-
-`USER_QOS_PROFILES.xml`을 통해 통신 품질을 관리합니다.
-
-*   **Reliability**: `RELIABLE_RELIABILITY_QOS` 설정을 통해 패킷 유실 시 DDS 레이어에서 자동으로 재전송을 시도합니다.
-*   **History**: `KEEP_LAST_HISTORY_QOS` (depth=1)로 가장 최신의 메시지 한 개만 큐에 보존하여 지연 시간을 최소화합니다.
+| 이벤트 | current_count | 동작 |
+|--------|---------------|------|
+| Daemon 연결 | 1 | "Connected (1 writer)" 표시 |
+| Daemon 해제 | 0 | "Daemon disconnected" 표시 |
 
 ---
 
-## 6. 빌드 및 실행 구성
+## 5. 데이터 모델 (IDL)
 
-1.  **IDL Compilation**: `rtiddsgen`이 IDL을 C++ 소스 코드로 변환.
-2.  **CMake Build**: MSVC 컴파일러를 사용하여 `app1`, `app2` 별도 실행 파일 생성.
-3.  **Execution**: 환경 변수 `RTI_LICENSE_FILE`을 통해 RTI 라이선스를 로드한 상태에서 실행.
+`ping_pong.idl`에 정의된 메시지 구조:
+
+```idl
+struct PingPongMessage {
+    string sender_id;    // 발신자 ("Daemon" 또는 "QtApp")
+    long sequence_num;   // 시퀀스 번호
+};
+```
+
+---
+
+## 6. QoS 설정
+
+`USER_QOS_PROFILES.xml`에서 통신 품질을 설정합니다.
+
+| 설정 | 값 | 설명 |
+|------|----|----|
+| Reliability | RELIABLE | 패킷 유실 시 자동 재전송 |
+| History | KEEP_LAST (depth=1) | 최신 메시지 1개만 보관 |
+
+---
+
+## 7. 파일 구조
+
+```
+daemon/
+└── main.cpp              # DaemonApp, PongListener 클래스
+
+gui/
+├── main.cpp              # Qt 앱 진입점
+├── DdsManager.hpp        # DDS-Qt 브리지 (헤더)
+├── DdsManager.cpp        # DDS 초기화 및 메시지 처리
+└── Main.qml              # QML UI 정의
+```
+
+---
+
+## 8. 스레드 모델
+
+| 스레드 | 역할 |
+|--------|------|
+| Qt Main Thread | QML UI 렌더링, 이벤트 처리 |
+| DDS Receive Thread | DataReader 콜백 실행 |
+
+`QMetaObject::invokeMethod(..., Qt::QueuedConnection)`을 통해 스레드 간 안전한 통신을 보장합니다.

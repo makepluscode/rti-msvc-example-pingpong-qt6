@@ -1,21 +1,31 @@
-# RTI Ping-Pong 실행 스크립트 (Windows PowerShell)
+# RTI Ping-Pong 실행 스크립트
+# run.ps1
 
-# 터미널 한글 깨짐 방지 (UTF-8 설정)
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-chcp 65001 | Out-Null
+$releaseDir = "build\Release"
 
-# 라이선스 파일 경로 설정
-$env:RTI_LICENSE_FILE = "C:\Program Files\rti_connext_dds-7.5.0\rti_license.dat"
+# Check if executables exist
+if (-Not (Test-Path "$releaseDir\PingDaemon.exe")) {
+    Write-Host "[Error] PingDaemon.exe not found. Run './build.ps1' first." -ForegroundColor Red
+    exit 1
+}
 
-Write-Host "--- [실행] app1과 app2를 시작합니다 ---" -ForegroundColor Cyan
-Write-Host "--- (종료하려면 Ctrl+C를 누르세요) ---" -ForegroundColor Yellow
+if (-Not (Test-Path "$releaseDir\PingGui.exe")) {
+    Write-Host "[Error] PingGui.exe not found. Run './build.ps1' first." -ForegroundColor Red
+    exit 1
+}
 
-# app2 실행 (Ping 수신 대기자)
-$app2 = Start-Process "./build/Release/app2.exe" -PassThru -NoNewWindow
-Start-Sleep -Seconds 2
+Write-Host "--- Starting RTI Ping-Pong Applications ---" -ForegroundColor Cyan
 
-# app1 실행 (Ping 발신자)
-./build/Release/app1.exe
+# Start Daemon (터미널 창에서 실행)
+Write-Host "[1/2] Starting PingDaemon..." -ForegroundColor Yellow
+Start-Process -FilePath "$releaseDir\PingDaemon.exe" -WorkingDirectory $releaseDir
 
-# app1 종료 시 app2도 함께 종료
-Stop-Process -Id $app2.Id -ErrorAction SilentlyContinue
+# Wait a moment for daemon to initialize
+Start-Sleep -Milliseconds 500
+
+# Start GUI
+Write-Host "[2/2] Starting PingGui..." -ForegroundColor Yellow
+Start-Process -FilePath "$releaseDir\PingGui.exe" -WorkingDirectory $releaseDir
+
+Write-Host "--- Both applications started ---" -ForegroundColor Green
+Write-Host "Close PingDaemon window to test disconnect detection." -ForegroundColor Cyan
